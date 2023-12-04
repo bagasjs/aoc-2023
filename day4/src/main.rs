@@ -20,34 +20,24 @@ impl ScratchPad {
             return Err("Invalid card label");
         }
 
-        if let Ok(id) = card_labels[1].parse::<i32>() {
-            let numbers: Vec<&str> = elements[1].trim().split("|").collect();
-            if numbers.len() != 2 {
-                return Err("Invalid numbers");
-            }
+        let id: i32 = card_labels[1].parse().map_err(|_| "Failed to parse card id")?;
 
-            let mut winning_numbers: Vec<i32> = Vec::new();
-            for number in numbers[0].trim().split_whitespace() {
-                if let Ok(number) = number.parse::<i32>() {
-                    winning_numbers.push(number);
-                } else {
-                    return Err("Failed to parse winning numbers");
-                }
-            }
-
-            let mut player_numbers: Vec<i32> = Vec::new();
-            for number in numbers[1].trim().split_whitespace() {
-                if let Ok(number) = number.parse::<i32>() {
-                    player_numbers.push(number);
-                } else {
-                    return Err("Failed to parse winning numbers");
-                }
-            }
-
-            return Ok(Self { id, winning_numbers, player_numbers, amount: 1, });
-        } else {
-            return Err("Failed to parse ScratchPad ID");
+        let numbers: Vec<&str> = elements[1].trim().split("|").collect();
+        if numbers.len() != 2 {
+            return Err("Invalid numbers");
         }
+
+        let mut winning_numbers: Vec<i32> = Vec::new();
+        for number in numbers[0].trim().split_whitespace() {
+            winning_numbers.push(number.parse().map_err(|_| "Failed to parse winning numbers")?);
+        }
+
+        let mut player_numbers: Vec<i32> = Vec::new();
+        for number in numbers[1].trim().split_whitespace() {
+            player_numbers.push(number.parse().map_err(|_| "Failed to parse player numbers")?);
+        }
+
+        return Ok(Self { id, winning_numbers, player_numbers, amount: 1, });
     }
 
     fn amount_of_winning_numbers(&self) -> i32 {
@@ -71,33 +61,30 @@ impl ScratchPad {
 }
 
 fn solve_file(file_path: &str) -> Result<(i32, i32), &'static str> {
-    if let Ok(file_content) = fs::read_to_string(file_path) {
-        let mut total_point = 0;
-        let mut cards: Vec<ScratchPad> = Vec::new();
-        for line in file_content.lines() {
-            let scratch_pad = ScratchPad::new(line.trim())?;
-            total_point += scratch_pad.calculate_point();
-            cards.push(scratch_pad);
-        }
-
-        let mut total_amount = 0;
-        for i in 0..cards.len() {
-            let amount_of_winning_numbers = cards[i].amount_of_winning_numbers();
-            for _ in 0..cards[i].amount {
-                for j in 0..amount_of_winning_numbers {
-                    let index = cards[i].id + (j as i32);
-                    if index < (cards.len() as i32) {
-                        cards[index as usize].amount += 1;
-                    }
-                }
-                total_amount += 1;
-            }
-        }
-
-        return Ok((total_point, total_amount));
-    } else {
-        return Err("Failed to open file content");
+    let file_content = fs::read_to_string(file_path).map_err(|_| "Failed to load file content")?;
+    let mut total_point = 0;
+    let mut cards: Vec<ScratchPad> = Vec::new();
+    for line in file_content.lines() {
+        let scratch_pad = ScratchPad::new(line.trim())?;
+        total_point += scratch_pad.calculate_point();
+        cards.push(scratch_pad);
     }
+
+    let mut total_amount = 0;
+    for i in 0..cards.len() {
+        let amount_of_winning_numbers = cards[i].amount_of_winning_numbers();
+        for _ in 0..cards[i].amount {
+            for j in 0..amount_of_winning_numbers {
+                let index = cards[i].id + (j as i32);
+                if index < (cards.len() as i32) {
+                    cards[index as usize].amount += 1;
+                }
+            }
+            total_amount += 1;
+        }
+    }
+
+    return Ok((total_point, total_amount));
 }
 
 fn main() {
