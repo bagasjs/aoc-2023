@@ -4,6 +4,7 @@ use std::fs;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Card {
     Unknown,
+    Joker,
     Two,
     Three,
     Four,
@@ -13,7 +14,6 @@ enum Card {
     Eight,
     Nine,
     Ten,
-    Jack,
     Queen,
     King,
     Ace,
@@ -33,23 +33,24 @@ enum HandKind {
 struct Hand {
     cards: [Card; 5],
     kind: HandKind,
-    bid: i32,
+    bid: u64,
 }
 
 impl Hand {
-    fn new(cards: &str, bid: i32) -> Result<Self, String> {
+    fn new(cards: &str, bid: u64) -> Result<Self, String> {
         if cards.len() != 5 {
             return Err("Allowed card for a hand is only 5".to_string());
         }
 
         let mut result = Self { bid, kind: HandKind::HighCard, cards: [Card::Unknown, Card::Unknown, Card::Unknown, Card::Unknown, Card::Unknown] };
         let cards: Vec<char> = cards.chars().collect();
+
+        let mut joker_count = 0;
         for i in 0..5 {
             let current_card = match cards[i] {
                 'A' => Card::Ace,
                 'K' => Card::King,
                 'Q' => Card::Queen,
-                'J' => Card::Jack,
                 'T' => Card::Ten,
                 '9' => Card::Nine,
                 '8' => Card::Eight,
@@ -59,41 +60,91 @@ impl Hand {
                 '4' => Card::Four,
                 '3' => Card::Three,
                 '2' => Card::Two,
+                'J' => Card::Joker,
                 _ => Card::Unknown,
             };
 
-            let mut same_card_counter = 0;
-            for j in 0..i {
-                if current_card == result.cards[j] {
-                    same_card_counter += 1;
+            if current_card == Card::Joker {
+                joker_count += 1;
+            } else {
+                let mut same_card_counter = 0;
+                for j in 0..i {
+                    if current_card == result.cards[j] {
+                        same_card_counter += 1;
+                    }
+                }
+
+                result.kind = match same_card_counter {
+                    0 => result.kind,
+                    1 => match result.kind {
+                        HandKind::HighCard => HandKind::OnePair,
+                        HandKind::OnePair => HandKind::TwoPair,
+                        HandKind::ThreeOfAkind => HandKind::FullHouse,
+                        _ => {
+                            return Err(format!("Unexpected kind transition from {:?} with {same_card_counter} matching cards", result.kind))
+                        }
+                    },
+                    2 => match result.kind {
+                        HandKind::OnePair => HandKind::ThreeOfAkind,
+                        HandKind::TwoPair => HandKind::FullHouse,
+                        _ => {
+                            return Err(format!("Unexpected kind transition from {:?} with {same_card_counter} matching cards", result.kind))
+                        },
+                    },
+                    3 => match result.kind {
+                        HandKind::ThreeOfAkind => HandKind::FourOfAKind,
+                        _ => {
+                            return Err(format!("Unexpected kind transition from {:?} with {same_card_counter} matching cards", result.kind))
+                        }
+                    },
+                    4 => match result.kind {
+                        HandKind::FourOfAKind => HandKind::FiveOfAKind,
+                        _ => {
+                            return Err(format!("Unexpected kind transition from {:?} with {same_card_counter} matching cards", result.kind))
+                        }
+                    }
+                    _ => return Err("Unreachable error".to_string())
+                };
+            }
+            result.cards[i] = current_card;
+        }
+
+        result.kind = match joker_count {
+            0 => result.kind,
+            1 => match result.kind {
+                HandKind::HighCard => HandKind::OnePair,
+                HandKind::OnePair => HandKind::ThreeOfAkind,
+                HandKind::ThreeOfAkind => HandKind::FourOfAKind,
+                HandKind::FourOfAKind => HandKind::FiveOfAKind,
+                HandKind::TwoPair => HandKind::FullHouse,
+                _ => {
+                    return Err(format!("Unexpected kind transition from {:?} with {joker_count} jokers", result.kind))
+                },
+            },
+            2 => match result.kind {
+                HandKind::HighCard => HandKind::ThreeOfAkind,
+                HandKind::OnePair => HandKind::FourOfAKind,
+                HandKind::ThreeOfAkind => HandKind::FiveOfAKind,
+                _ => {
+                    return Err(format!("Unexpected kind transition from {:?} with {joker_count} jokers", result.kind))
+                },
+            },
+            3 => match result.kind {
+                HandKind::HighCard => HandKind::FourOfAKind,
+                HandKind::OnePair => HandKind::FiveOfAKind,
+                _ => {
+                    return Err(format!("Unexpected kind transition from {:?} with {joker_count} jokers", result.kind))
+                }
+            },
+            4 => match result.kind {
+                HandKind::HighCard => HandKind::FiveOfAKind,
+                _ => {
+                    return Err(format!("Unexpected kind transition from {:?} with {joker_count} jokers", result.kind))
                 }
             }
-
-            result.cards[i] = current_card;
-            result.kind = match same_card_counter {
-                0 => result.kind,
-                1 => match result.kind {
-                    HandKind::HighCard => HandKind::OnePair,
-                    HandKind::OnePair => HandKind::TwoPair,
-                    HandKind::ThreeOfAkind => HandKind::FullHouse,
-                    _ => return Err("This should not be happened".to_string()),
-                },
-                2 => match result.kind {
-                    HandKind::OnePair => HandKind::ThreeOfAkind,
-                    HandKind::TwoPair => HandKind::FullHouse,
-                    _ => return Err("This should not be happened".to_string()),
-                },
-                3 => match result.kind {
-                    HandKind::ThreeOfAkind => HandKind::FourOfAKind,
-                    _ => return Err("This should not be happened".to_string()),
-                },
-                4 => match result.kind {
-                    HandKind::FourOfAKind => HandKind::FiveOfAKind,
-                    _ => return Err("This should not be happened".to_string()),
-                }
-                _ => return Err("Unreachable error".to_string())
-            };
-        }
+            5 => HandKind::FiveOfAKind,
+            _ => return Err("Unreachable error".to_string())
+        };
 
         Ok(result)
     }
@@ -116,13 +167,13 @@ fn cmp_hands(a: &Hand, b: &Hand) -> std::cmp::Ordering {
     }
 }
 
-fn solve_file(file_path: &str) -> Result<(i32, i32), String> {
+fn solve_file(file_path: &str) -> Result<u64, String> {
     let file_content = fs::read_to_string(file_path).map_err(|e| e.to_string())?;
     let mut hands: Vec<Hand> = Vec::new();
     for line in file_content.lines() {
         let mut line_it = line.split_whitespace().into_iter();
         let cards = line_it.next().ok_or("Failed to parse cards")?;
-        let bid: i32 = line_it.next()
+        let bid: u64 = line_it.next()
             .ok_or("Failed to parse the bid")?
             .parse()
             .map_err(|_| "Failed to parse bid to number")?;
@@ -130,21 +181,20 @@ fn solve_file(file_path: &str) -> Result<(i32, i32), String> {
         hands.push(hand);
     }
     hands.sort_by(|a, b| cmp_hands(a, b));
-    let mut result_of_part_1 = 0;
+    let mut result = 0;
     for i in 0..hands.len() {
-        println!("{:?} {:?} {}", hands[i].cards, hands[i].kind, hands[i].bid);
-        result_of_part_1 += hands[i].bid * (i + 1) as i32;
+        println!("{:?} {:?}", hands[i].cards, hands[i].kind);
+        result += hands[i].bid * (i + 1) as u64;
     }
-    return Ok((result_of_part_1, 1,));
+    return Ok(result);
 }
 
 fn main() {
     let file_path = env::args().skip(1).next().expect("Please provide an input file path");
 
     match solve_file(&file_path) {
-        Ok((part_1, part_2)) => {
-            println!("Result of part 1: {part_1}");
-            println!("Result of part 2: {part_2}");
+        Ok(result) => {
+            println!("Result: {result}");
         },
         Err(error_message) => eprintln!("ERROR: {}", error_message),
     }
